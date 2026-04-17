@@ -119,7 +119,20 @@
         .btn-danger { background: #ff3b30; color: white; }
         .btn-secondary { background: #555; color: white; }
         
-        #save-img { max-width: 90%; max-height: 70%; background: white; border: 2px solid #fff; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); display: inline-block; }
+        #save-img { 
+            max-width: 90%; 
+            max-height: 70%; 
+            background: white; 
+            border: 2px solid #fff; 
+            border-radius: 8px; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); 
+            display: inline-block; 
+            /* Restore iOS native long-press save menu */
+            -webkit-touch-callout: default !important;
+            -webkit-user-select: auto !important;
+            user-select: auto !important;
+            pointer-events: auto !important;
+        }
 
         /* Mobile specific adjustments */
         @media (max-width: 600px) {
@@ -257,7 +270,7 @@
 
     <!-- Modals for saving, confirming, and text input -->
     <div id="save-modal" class="modal">
-        <p>Tap and hold the image below to save it.</p>
+        <p>Tap and hold the image below to save it.<br><span style="font-size:14px; color:#ffcc00;">(If saving is blocked, press Power + Home to take a Screenshot!)</span></p>
         <img id="save-img" alt="Saved Whiteboard">
         <br>
         <button id="close-modal" class="btn-danger">Close</button>
