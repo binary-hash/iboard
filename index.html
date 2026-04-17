@@ -20,9 +20,13 @@
             overflow: hidden;
             background-color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            /* Prevent text selection while drawing */
+            /* REMOVED user-select: none from body to fix iOS Save Menu bug */
+        }
+
+        #canvas, #overlay-canvas, #toolbar, #btn-zen, .modal button {
             -webkit-user-select: none;
             user-select: none;
+            -webkit-touch-callout: none;
         }
 
         /* --- 14 Background Modes --- */
@@ -121,13 +125,13 @@
         
         #save-img { 
             max-width: 90%; 
-            max-height: 70%; 
+            max-height: 60%; /* Adjusted slightly to fit new button */
             background: white; 
             border: 2px solid #fff; 
             border-radius: 8px; 
             box-shadow: 0 0 20px rgba(0,0,0,0.5); 
             display: inline-block; 
-            /* Restore iOS native long-press save menu */
+            /* Explicitly enable native long-press save menu */
             -webkit-touch-callout: default !important;
             -webkit-user-select: auto !important;
             user-select: auto !important;
@@ -270,10 +274,13 @@
 
     <!-- Modals for saving, confirming, and text input -->
     <div id="save-modal" class="modal">
-        <p>Tap and hold the image below to save it.<br><span style="font-size:14px; color:#ffcc00;">(If saving is blocked, press Power + Home to take a Screenshot!)</span></p>
+        <p>Tap and hold the image below to save it.</p>
         <img id="save-img" alt="Saved Whiteboard">
         <br>
-        <button id="close-modal" class="btn-danger">Close</button>
+        <div style="margin-top: 15px;">
+            <button id="btn-force-safari" class="btn-primary" style="font-size: 14px;">Open in Safari to Save</button>
+            <button id="close-modal" class="btn-danger">Close</button>
+        </div>
     </div>
 
     <div id="confirm-modal" class="modal">
@@ -919,11 +926,10 @@
 
         // iPad Save Exporter - MEMORY FIX FOR IPAD 3
         btnSave.addEventListener('click', function() {
-            // Export strictly at 1x resolution. Drawing at 2x Retina scaling 
-            // uses 50MB+ RAM for a single image, instantly crashing an old iPad.
+            // Reverted back to native resolution for high-quality export
             var tempCanvas = document.createElement('canvas');
-            tempCanvas.width = Math.max(1, window.innerWidth); 
-            tempCanvas.height = Math.max(1, window.innerHeight);
+            tempCanvas.width = Math.max(1, canvas.width); 
+            tempCanvas.height = Math.max(1, canvas.height);
             var tCtx = tempCanvas.getContext('2d');
             
             var isDark = document.body.classList.contains('dark-mode');
@@ -938,19 +944,20 @@
             
             tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             
-            // Draw background lines at 1x scale
-            tCtx.lineWidth = 1;
+            // Draw background lines at native scale
+            var ratio = window.devicePixelRatio || 1;
+            tCtx.lineWidth = 1 * ratio;
             tCtx.beginPath();
             
-            var step = 40;
+            var step = 40 * ratio;
             var x = 0, y = 0;
 
             if (currentBg === 'grid-mode' || currentBg === 'blueprint' || currentBg === 'dark-grid' || currentBg === 'graph-paper' || currentBg === 'storyboard' || currentBg === 'crosshair') {
                 if(currentBg === 'blueprint') tCtx.strokeStyle = 'rgba(255,255,255,0.3)';
-                else if(currentBg === 'graph-paper') { tCtx.strokeStyle = '#cce0ff'; step = 20; }
+                else if(currentBg === 'graph-paper') { tCtx.strokeStyle = '#cce0ff'; step = 20 * ratio; }
                 else if(currentBg === 'dark-grid') tCtx.strokeStyle = '#333333';
-                else if(currentBg === 'storyboard') { tCtx.strokeStyle = '#333333'; step = (tempCanvas.width / 2); tCtx.lineWidth = 4; }
-                else if(currentBg === 'crosshair') { tCtx.strokeStyle = '#dddddd'; step = 100; }
+                else if(currentBg === 'storyboard') { tCtx.strokeStyle = '#333333'; step = (tempCanvas.width / 2); tCtx.lineWidth = 4 * ratio; }
+                else if(currentBg === 'crosshair') { tCtx.strokeStyle = '#dddddd'; step = 100 * ratio; }
                 else tCtx.strokeStyle = isDark ? '#3a3a3a' : '#e0e0e0';
 
                 for (x = 0; x <= tempCanvas.width; x += step) { tCtx.moveTo(x, 0); tCtx.lineTo(x, tempCanvas.height); }
@@ -962,32 +969,42 @@
                 tCtx.stroke();
             } else if (currentBg === 'dot-grid') {
                 tCtx.fillStyle = isDark ? '#555555' : '#cccccc';
-                step = 30;
+                step = 30 * ratio;
                 for (x = 0; x <= tempCanvas.width; x += step) {
                     for (y = 0; y <= tempCanvas.height; y += step) {
-                        tCtx.beginPath(); tCtx.arc(x, y, 2, 0, Math.PI*2); tCtx.fill();
+                        tCtx.beginPath(); tCtx.arc(x, y, 2 * ratio, 0, Math.PI*2); tCtx.fill();
                     }
                 }
             } else if (currentBg === 'music-mode') {
                 tCtx.strokeStyle = isDark ? '#cccccc' : '#000000';
-                var groupStep = 120; var lineStep = 10;
-                for (var yStart = 20; yStart <= tempCanvas.height; yStart += groupStep) {
+                var groupStep = 120 * ratio; var lineStep = 10 * ratio;
+                for (var yStart = 20 * ratio; yStart <= tempCanvas.height; yStart += groupStep) {
                     for(var l=0; l<5; l++) { y = yStart + (l * lineStep); tCtx.moveTo(0, y); tCtx.lineTo(tempCanvas.width, y); }
                 }
                 tCtx.stroke();
             }
 
-            // Safe drawing of user strokes, perfectly scaling down Retina to 1x to bypass iPad RAM limitations
+            // Safe drawing of user strokes natively
             try {
-                tCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, tempCanvas.width, tempCanvas.height);
+                tCtx.drawImage(canvas, 0, 0);
             } catch (e) {
                 console.warn("Could not save drawn strokes to export image", e);
             }
 
-            // Use lower JPEG compression (0.7) to keep string size extremely small
-            var dataURL = tempCanvas.toDataURL('image/jpeg', 0.7);
+            // Use lower JPEG compression (0.8) to keep memory usage safe
+            var dataURL = tempCanvas.toDataURL('image/jpeg', 0.8);
             saveImg.src = dataURL;
             saveModal.style.display = 'block';
+            
+            // Setup Safari fallback button
+            document.getElementById('btn-force-safari').onclick = function() {
+                var win = window.open();
+                if(win) {
+                    win.document.write('<body style="margin:0;background:#222;display:flex;justify-content:center;align-items:center;"><img src="' + dataURL + '" style="max-width:100%;max-height:100%;"/></body>');
+                } else {
+                    window.location.href = dataURL;
+                }
+            };
         }, false);
 
         btnCloseModal.addEventListener('click', function() { saveModal.style.display = 'none'; }, false);
