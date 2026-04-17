@@ -248,12 +248,14 @@
             <button id="btn-autohide" class="active" title="Auto-Hide Toolbar">&#x1F47B;</button>
             <button id="btn-mirror" title="Mirror Symmetry">&#x21C4;</button>
             <button id="btn-dark" title="Dark Mode">&#x1F311;</button>
+            <button id="btn-undo" title="Undo">&#x21B6;</button>
             <button id="btn-clear" title="Clear Canvas">&#x1F4A3;</button>
             <button id="btn-save" title="Save Image">&#x1F4BE;</button>
             <button id="btn-guide" title="Gesture Guide">&#x2753;</button>
         </div>
     </div>
 
+    <!-- Modals for saving, confirming, and text input -->
     <div id="save-modal" class="modal">
         <p>Tap and hold the image below to save it.</p>
         <img id="save-img" alt="Saved Whiteboard">
@@ -282,6 +284,7 @@
             <li><strong>2-Finger Swipe (L/R):</strong> Cycle Backgrounds</li>
             <li><strong>2-Finger Pinch:</strong> Adjust Brush Thickness</li>
             <li><strong>3-Finger Tap:</strong> Clear Canvas</li>
+            <li><strong>3-Finger Swipe (Left):</strong> Undo</li>
             <li><strong>3-Finger Swipe Down:</strong> Save Image</li>
             <li><strong>3-Finger Swipe Up:</strong> Lock / Unlock Canvas</li>
             <li><strong>4-Finger Tap:</strong> Toggle Zen Mode (Hide Toolbar)</li>
@@ -305,6 +308,10 @@
         var strokeColor = '#000000';
         
         var rainbowHue = 0; // For rainbow brush
+
+        // Undo state
+        var undoStack = [];
+        var MAX_UNDO = 5; // Capped to 5 to protect iPad 3 RAM
 
         // Gesture state
         var gestureType = '';
@@ -333,6 +340,7 @@
         var btnAutoHide = document.getElementById('btn-autohide');
         var btnMirror = document.getElementById('btn-mirror');
         var btnDark = document.getElementById('btn-dark');
+        var btnUndo = document.getElementById('btn-undo');
         var btnClear = document.getElementById('btn-clear');
         var btnSave = document.getElementById('btn-save');
         var btnZen = document.getElementById('btn-zen');
@@ -463,6 +471,19 @@
             return 'rgba(' + r + ',' + g + ',' + b + ', 0.3)';
         }
 
+        // --- State Management ---
+        function saveState() {
+            if (undoStack.length >= MAX_UNDO) {
+                undoStack.shift();
+            }
+            // Use an in-memory canvas instead of base64 strings to save CPU and RAM
+            var tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCanvas.getContext('2d').drawImage(canvas, 0, 0);
+            undoStack.push(tempCanvas);
+        }
+
         // --- Drawing Logic ---
 
         function getCoordinates(e) {
@@ -533,6 +554,8 @@
                 e.preventDefault();
                 return;
             }
+            
+            saveState(); // Save state before continuous brushing tools
             
             clearContextSettings(ctx);
             ctx.beginPath();
@@ -747,6 +770,9 @@
                         } else if (dy < -80 && Math.abs(dy) > Math.abs(dx)) {
                             // 3-Finger Swipe Up
                             btnLock.click();
+                        } else if (dx < -80 && Math.abs(dx) > Math.abs(dy)) {
+                            // 3-Finger Swipe Left
+                            btnUndo.click();
                         } else if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
                             // 3-Finger Tap
                             confirmModal.style.display = 'block';
@@ -768,6 +794,7 @@
                 var endY = touch.clientY || lastY;
                 
                 oCtx.clearRect(0, 0, oCanvas.width, oCanvas.height);
+                saveState(); // Save state before committing shape tool to canvas
                 drawPreviewShape(ctx, currentTool, startX, startY, endX, endY, currentThickness, strokeColor);
                 
                 if (isMirror) {
@@ -818,9 +845,24 @@
         btnMirror.addEventListener('click', function() { isMirror = !isMirror; btnMirror.className = isMirror ? 'active' : ''; }, false);
         btnDark.addEventListener('click', function() { document.body.classList.toggle('dark-mode'); btnDark.className = document.body.classList.contains('dark-mode') ? 'active' : ''; }, false);
         
+        // Undo Action
+        btnUndo.addEventListener('click', function() {
+            if (undoStack.length > 0) {
+                var prevState = undoStack.pop();
+                // Temporarily bypass scaling to do a pure pixel copy
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(prevState, 0, 0);
+                // Restore scale
+                var ratio = window.devicePixelRatio || 1;
+                ctx.scale(ratio, ratio);
+            }
+        }, false);
+
         // Clear Canvas (Replaced confirm() with Custom Modal)
         btnClear.addEventListener('click', function() { confirmModal.style.display = 'block'; }, false);
         btnConfirmYes.addEventListener('click', function() {
+            saveState(); // Save state before clearing
             // Temporarily remove scaling to clear absolute pixel area safely
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -840,6 +882,7 @@
         btnTextOk.addEventListener('click', function() {
             var text = textInput.value;
             if (text) {
+                saveState(); // Save state before stamping text
                 ctx.font = (parseInt(sliderThickness.value) * 4 + 10) + 'px sans-serif';
                 ctx.fillStyle = strokeColor;
                 ctx.fillText(text, textTargetX, textTargetY);
@@ -866,8 +909,8 @@
             // Export strictly at 1x resolution. Drawing at 2x Retina scaling 
             // uses 50MB+ RAM for a single image, instantly crashing an old iPad.
             var tempCanvas = document.createElement('canvas');
-            tempCanvas.width = window.innerWidth; 
-            tempCanvas.height = window.innerHeight;
+            tempCanvas.width = Math.max(1, window.innerWidth); 
+            tempCanvas.height = Math.max(1, window.innerHeight);
             var tCtx = tempCanvas.getContext('2d');
             
             var isDark = document.body.classList.contains('dark-mode');
